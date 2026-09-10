@@ -13,14 +13,23 @@ const ensure = async (db: D1Database) => {
   await db.prepare(`CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, content TEXT NOT NULL, date TEXT NOT NULL)`).run()
 }
 
+const getCookie = (c: any, k: string) => (c.req.header('Cookie') || '').split('; ').find((x: string) => x.startsWith(k + '='))?.split('=')[1] || ''
+const isAuth = (c: any) => !c.env.ADMIN_PASSWORD || getCookie(c, 'auth') === c.env.ADMIN_PASSWORD
+
+app.get('/login', c => {
+  if (isAuth(c)) return c.redirect('/admin')
+  return c.html(layout('登录', `<form method="post" action="/login" style="max-width:360px;margin:40px auto"><label>密码<input name="password" type="password" required autofocus></label><button>登录</button></form>`))
+})
+app.post('/login', async c => {
+  const f = await c.req.parseBody()
+  if (String(f.password) !== c.env.ADMIN_PASSWORD) return c.html(layout('登录', `<p style="color:#c00">密码错误</p><p><a href="/login">重试</a></p>`))
+  return new Response(null, { status: 302, headers: { 'Location': '/admin', 'Set-Cookie': `auth=${c.env.ADMIN_PASSWORD}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000` } })
+})
+app.get('/logout', c => new Response(null, { status: 302, headers: { 'Location': '/', 'Set-Cookie': `auth=; Path=/; Max-Age=0` } }))
+
 app.use('/admin*', async (c, next) => {
-  if (!c.env.ADMIN_PASSWORD) return next()
-  const a = c.req.header('Authorization')
-  if (a) {
-    const p = atob(a.split(' ')[1] || '').split(':')[1] || ''
-    if (p === c.env.ADMIN_PASSWORD) return next()
-  }
-  return new Response('需要密码', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="weekly"' } })
+  if (isAuth(c)) return next()
+  return c.redirect('/login')
 })
 
 app.get('/', async c => {
@@ -49,24 +58,18 @@ app.get('/w/:id', async c => {
   const r = await c.env.DB.prepare(`SELECT * FROM entries WHERE id=?`).bind(id).first() as any
   if (!r) return c.notFound()
   const html = await marked.parse(r.content)
-  const isAdmin = (() => {
-    if (!c.env.ADMIN_PASSWORD) return true
-    const a = c.req.header('Authorization')
-    if (!a) return false
-    try { return (atob(a.split(' ')[1] || '').split(':')[1] || '') === c.env.ADMIN_PASSWORD } catch { return false }
-  })()
+  const isAdmin = isAuth(c)
   const admin = isAdmin ? `<p style="margin-top:16px;font-size:13px"><a href="/admin/edit/${r.id}">编辑</a><span style="margin:0 8px;color:#ccc">·</span><form method="post" action="/admin/delete/${r.id}" style="display:inline" onsubmit="return confirm('删除?')"><button style="background:none;border:none;color:#999;text-decoration:underline;cursor:pointer;padding:0;font:inherit;font-size:13px">删除</button></form></p>` : ``
   return c.html(layout(r.title, `<article><time>${esc(r.date)}</time><h2>${esc(r.title)}</h2><div class="md">${html}</div>${admin}</article><p><a href="/">← 返回</a></p>`))
 })
 
 app.get('/admin', async c => {
-  return c.html(layout('写周记', `<form method="post" action="/admin"><label>标题<input name="title" required></label><label>日期<input name="date" type="date" value="${new Date().toISOString().slice(0,10)}"></label><label>正文 (Markdown)<textarea name="content" required placeholder="# 本周小记&#10;&#10;- 做了什么..."></textarea></label>${c.env.ADMIN_PASSWORD ? `<label>密码<input name="password" type="password" required></label>` : ``}<button>保存</button></form>`))
+  return c.html(layout('写周记', `<form method="post" action="/admin"><label>标题<input name="title" required></label><label>日期<input name="date" type="date" value="${new Date().toISOString().slice(0,10)}"></label><label>正文 (Markdown)<textarea name="content" required placeholder="# 本周小记&#10;&#10;- 做了什么..."></textarea></label><button>保存</button><p style="font-size:12px;color:#999;margin-top:8px"><a href="/logout">退出登录</a></p></form>`))
 })
 
 app.post('/admin', async c => {
   await ensure(c.env.DB)
   const f = await c.req.parseBody()
-  if (c.env.ADMIN_PASSWORD && f.password !== c.env.ADMIN_PASSWORD) return c.text('password wrong', 403)
   const title = String(f.title || '').trim()
   const content = String(f.content || '').trim()
   const date = String(f.date || new Date().toISOString().slice(0,10))
@@ -79,21 +82,18 @@ app.get('/admin/edit/:id', async c => {
   await ensure(c.env.DB)
   const r = await c.env.DB.prepare(`SELECT * FROM entries WHERE id=?`).bind(c.req.param('id')).first() as any
   if (!r) return c.notFound()
-  return c.html(layout('编辑', `<form method="post" action="/admin/edit/${r.id}"><label>标题<input name="title" value="${esc(r.title)}" required></label><label>日期<input name="date" type="date" value="${esc(r.date)}"></label><label>正文<textarea name="content" required>${esc(r.content)}</textarea></label>${c.env.ADMIN_PASSWORD ? `<label>密码<input name="password" type="password" required></label>` : ``}<button>更新</button></form>`))
+  return c.html(layout('编辑', `<form method="post" action="/admin/edit/${r.id}"><label>标题<input name="title" value="${esc(r.title)}" required></label><label>日期<input name="date" type="date" value="${esc(r.date)}"></label><label>正文<textarea name="content" required>${esc(r.content)}</textarea></label><button>更新</button></form>`))
 })
 
 app.post('/admin/edit/:id', async c => {
   await ensure(c.env.DB)
   const f = await c.req.parseBody()
-  if (c.env.ADMIN_PASSWORD && f.password !== c.env.ADMIN_PASSWORD) return c.text('password wrong', 403)
   await c.env.DB.prepare(`UPDATE entries SET title=?,content=?,date=? WHERE id=?`).bind(String(f.title), String(f.content), String(f.date), c.req.param('id')).run()
   return c.redirect(`/w/${c.req.param('id')}`)
 })
 
 app.post('/admin/delete/:id', async c => {
   await ensure(c.env.DB)
-  const f = await c.req.parseBody()
-  if (c.env.ADMIN_PASSWORD && f.password !== c.env.ADMIN_PASSWORD) return c.text('password wrong', 403)
   await c.env.DB.prepare(`DELETE FROM entries WHERE id=?`).bind(c.req.param('id')).run()
   return c.redirect('/')
 })
