@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { marked } from 'marked'
 
-type Env = { DB: D1Database; ADMIN_PASSWORD: string; MAIMEMO_TOKEN: string }
+type Env = { DB: D1Database; ADMIN_PASSWORD: string }
 const app = new Hono<{ Bindings: Env }>()
 
 const css = `*{margin:0;padding:0;box-sizing:border-box}html{scrollbar-gutter:stable}body{font-family:"Noto Serif SC","Songti SC",serif;background:#fff;color:#1a1a1a;max-width:700px;margin:0 auto;padding:32px 18px;line-height:1.9;letter-spacing:.02em}header{border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:baseline}header a{color:#111;text-decoration:none}header h1{font-size:21px;letter-spacing:.08em}nav a{font-size:13px;margin-left:14px;text-decoration:underline;text-underline-offset:3px}article{padding:12px 0;border:none}article h2{font-size:17px;margin:4px 0}time{font-size:12px;color:#999;letter-spacing:.04em}.md{font-size:15px;line-height:2;color:#222}.md h1{font-size:22px;margin:24px 0 12px;border-bottom:1px solid #eee;padding-bottom:8px}.md h2{font-size:19px;margin:22px 0 10px}.md h3{font-size:16px;margin:18px 0 8px}.md p{margin:14px 0}.md li{margin:6px 0 6px 20px}.md li:has(input[type="checkbox"]){list-style:none;margin-left:0}.md li input[type="checkbox"]{margin-right:6px;vertical-align:middle;width:auto}.md a{color:#1a1a1a;text-decoration:underline;text-underline-offset:3px}.md code{background:#f6f6f6;padding:2px 5px;font-size:13px;border-radius:3px}.md pre{background:#f6f6f6;padding:14px;overflow:auto;border-radius:6px;line-height:1.6}.md pre code{background:none;padding:0}.md img{max-width:100%;border-radius:4px;margin:12px 0}.md blockquote{border-left:3px solid #111;padding:6px 14px;margin:14px 0;color:#555;background:#fafafa}.md hr{border:none;border-top:1px solid #eee;margin:20px 0}form{display:flex;flex-direction:column;gap:14px;max-width:100%}label{display:flex;flex-direction:column;gap:6px;font-size:13px}input:not([type="checkbox"]),textarea{border:1px solid #bbb;padding:10px;font:inherit;width:100%;border-radius:4px}input[type="checkbox"]{width:auto;accent-color:#111}textarea{min-height:420px;resize:vertical}button{border:1px solid #111;background:#111;color:#fff;padding:8px 20px;cursor:pointer;align-self:flex-start;border-radius:4px}button:hover{background:#000}`
@@ -18,7 +18,7 @@ const isAuth = (c: any) => !c.env.ADMIN_PASSWORD || getCookie(c, 'auth') === c.e
 
 app.get('/login', c => {
   if (isAuth(c)) return c.redirect('/admin')
-  return c.html(layout('登录', `<form method="post" action="/login" style="max-width:360px;margin:40px auto"><label>密码<input name="password" type="password" required autofocus></label><button>登录</button></form>`))
+  return c.html(layout('登录', `<form method="post" action="/login" style="max-width:340px;margin:60px auto"><label style="gap:8px">密码<input name="password" type="password" required autofocus style="border:none;border-bottom:1px solid #111;border-radius:0;padding:10px 0"></label><button style="background:#fff;color:#111;border:1px solid #111;margin-top:8px">登录</button></form>`))
 })
 app.post('/login', async c => {
   const f = await c.req.parseBody()
@@ -36,20 +36,7 @@ app.get('/', async c => {
   await ensure(c.env.DB)
   const { results } = await c.env.DB.prepare(`SELECT id,title,date FROM entries ORDER BY id DESC`).all()
   const list = (results as any[]).map(r => `<article><time>${esc(r.date)}</time><h2><a href="/w/${r.id}">${esc(r.title)}</a></h2></article>`).join('') || `<p>还没有周记，<a href="/admin">写第一篇</a></p>`
-  let memo = ''
-  if (c.env.MAIMEMO_TOKEN) {
-    let today: any = '-', streak: any = '-'
-    try {
-      const r = await fetch('https://open.maimemo.com/open/api/v1/user/profile', { headers: { Authorization: `Bearer ${c.env.MAIMEMO_TOKEN}` } })
-      const j: any = await r.json().catch(() => null)
-      const d = j?.data || j || {}
-      today = d.today ?? d.today_learned ?? d.today_count ?? '-'
-      streak = d.streak ?? d.continuous_days ?? d.continuous ?? d.checkin_days ?? d.days ?? d.consecutive ?? '-'
-    } catch {}
-    memo = `<div style="border:1px solid #222;padding:12px;margin-bottom:20px;display:flex;gap:16px;justify-content:space-around;text-align:center"><div><div style="font-size:18px">${esc(String(today))}</div><div style="font-size:11px;color:#888">今日背词</div></div><div><div style="font-size:18px">${esc(String(streak))}天</div><div style="font-size:11px;color:#888">连续打卡</div></div></div>`
-  }
-  const head = memo || `<p style="color:#999;font-size:13px;margin-bottom:24px">每周一记，极简记录</p>`
-  return c.html(layout('周记', head + list))
+  return c.html(layout('周记', list))
 })
 
 app.get('/w/:id', async c => {
