@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "weekly"
-database_id = "weekly-local"
+database_id = "f41f9bc4-9a1b-4fde-a469-5fb062220252"
 
 [vars]
 ADMIN_PASSWORD = ""
