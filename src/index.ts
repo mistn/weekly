@@ -14,7 +14,7 @@ const ensure = async (db: D1Database) => {
 }
 
 const getCookie = (c: any, k: string) => (c.req.header('Cookie') || '').split('; ').find((x: string) => x.startsWith(k + '='))?.split('=')[1] || ''
-const isAuth = (c: any) => !c.env.ADMIN_PASSWORD || getCookie(c, 'auth') === c.env.ADMIN_PASSWORD
+const isAuth = (c: any) => !c.env.ADMIN_PASSWORD || getCookie(c, 'auth') === c.env.ADMIN_PASSWORD || (c.req.header('Authorization') || '').replace('Bearer ','') === c.env.ADMIN_PASSWORD || c.req.header('X-Auth') === c.env.ADMIN_PASSWORD
 
 app.get('/login', c => {
   if (isAuth(c)) return c.redirect('/admin')
@@ -102,5 +102,49 @@ app.get('/rss.xml', async c => {
   return new Response(await rss(c.env.DB, url), { headers: { 'Content-Type': 'application/rss+xml; charset=utf-8' } })
 })
 app.get('/feed', c => c.redirect('/rss.xml'))
+
+app.use('/api/*', async (c, next) => {
+  c.header('Access-Control-Allow-Origin', '*')
+  c.header('Access-Control-Allow-Headers', 'Authorization, X-Auth, Content-Type')
+  if (c.req.method === 'OPTIONS') return c.text('', 204)
+  await next()
+})
+app.post('/api/login', async c => {
+  const b: any = await c.req.json().catch(async () => await c.req.parseBody())
+  const p = b.password || b.auth
+  if (p !== c.env.ADMIN_PASSWORD) return c.json({ ok: false }, 401)
+  return c.json({ ok: true })
+})
+app.get('/api/entries', async c => {
+  await ensure(c.env.DB)
+  const { results } = await c.env.DB.prepare(`SELECT id,title,date,content FROM entries ORDER BY id DESC`).all()
+  return c.json(results)
+})
+app.get('/api/entries/:id', async c => {
+  await ensure(c.env.DB)
+  const r = await c.env.DB.prepare(`SELECT * FROM entries WHERE id=?`).bind(c.req.param('id')).first()
+  if (!r) return c.json({ error: 'not found' }, 404)
+  return c.json(r)
+})
+app.post('/api/entries', async c => {
+  if (!isAuth(c)) return c.json({ error: 'unauthorized' }, 401)
+  await ensure(c.env.DB)
+  const b: any = await c.req.json()
+  await c.env.DB.prepare(`INSERT INTO entries (title,content,date) VALUES (?,?,?)`).bind(b.title, b.content, b.date || new Date().toISOString().slice(0,10)).run()
+  return c.json({ ok: true })
+})
+app.put('/api/entries/:id', async c => {
+  if (!isAuth(c)) return c.json({ error: 'unauthorized' }, 401)
+  await ensure(c.env.DB)
+  const b: any = await c.req.json()
+  await c.env.DB.prepare(`UPDATE entries SET title=?,content=?,date=? WHERE id=?`).bind(b.title, b.content, b.date, c.req.param('id')).run()
+  return c.json({ ok: true })
+})
+app.delete('/api/entries/:id', async c => {
+  if (!isAuth(c)) return c.json({ error: 'unauthorized' }, 401)
+  await ensure(c.env.DB)
+  await c.env.DB.prepare(`DELETE FROM entries WHERE id=?`).bind(c.req.param('id')).run()
+  return c.json({ ok: true })
+})
 
 export default app
