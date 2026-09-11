@@ -11,6 +11,3 @@ database_id = "f41f9bc4-9a1b-4fde-a469-5fb062220252"
 [[r2_buckets]]
 binding = "IMG"
 bucket_name = "weekly-img"
-
-[vars]
-ADMIN_PASSWORD = ""
