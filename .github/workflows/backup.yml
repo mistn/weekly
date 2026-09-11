@@ -55,10 +55,13 @@ jobs:
         run: |
           mkdir -p img
           DATE=$(date +%F)
-          BASE="${WEBDAV_URL%/}/weekly/$DATE"
+          ROOT="${WEBDAV_URL%/}/weekly"
+          BASE="$ROOT/$DATE"
           AUTH="$WEBDAV_USERNAME:$WEBDAV_PASSWORD"
+          curl -fsS -u "$AUTH" -X MKCOL "$ROOT/" > /dev/null || true
           curl -fsS -u "$AUTH" -X MKCOL "$BASE/" > /dev/null || true
           curl -fsS -u "$AUTH" -T weekly.sql "$BASE/weekly.sql"
+          curl -fsS -u "$AUTH" -X MKCOL "$BASE/img/" > /dev/null || true
           find img -type f | while read -r f; do
             rel="${f#img/}"
             curl -fsS -u "$AUTH" -X MKCOL "$BASE/img/$(dirname "$rel")/" > /dev/null || true
