@@ -1,0 +1,52 @@
+# 每天自动全量备份到 WebDAV（D1 + R2 图片），也可在 Actions 页面手动点一次
+# 需要配 5 个 Secrets（仓库 Settings → Secrets and variables → Actions）：
+#   CLOUDFLARE_API_TOKEN   Cloudflare 新建 Token：D1 读 + R2 对象读
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare 后台链接里那串 account id
+#   WEBDAV_URL             例 https://dav.jianguoyun.com/dav（末尾不要斜杠）
+#   WEBDAV_USERNAME        WebDAV 账号
+#   WEBDAV_PASSWORD        WebDAV 密码/应用密码
+
+name: backup
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # 每天 02:00（北京时间），全程云端跑
+  workflow_dispatch: {} # Actions 页面 “Run workflow” 点一下即手动备份
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 安装 wrangler
+        run: npm install -g wrangler@3
+
+      - name: 导出 D1 + 下载 R2 图片
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          wrangler d1 export weekly --remote --output weekly.sql
+          (grep -oE '/img/[0-9A-Za-z_./-]+' weekly.sql || true) | sort -u | while read -r p; do
+            key="${p#/img/}"
+            mkdir -p "img/$(dirname "$key")"
+            wrangler r2 object get "weekly-img/$key" --file "img/$key"
+          done
+
+      - name: 上传到 WebDAV
+        env:
+          WEBDAV_URL: ${{ secrets.WEBDAV_URL }}
+          WEBDAV_USERNAME: ${{ secrets.WEBDAV_USERNAME }}
+          WEBDAV_PASSWORD: ${{ secrets.WEBDAV_PASSWORD }}
+        run: |
+          mkdir -p img
+          DATE=$(date +%F)
+          BASE="${WEBDAV_URL%/}/weekly/$DATE"
+          AUTH="$WEBDAV_USERNAME:$WEBDAV_PASSWORD"
+          curl -fsS -u "$AUTH" -X MKCOL "$BASE/" > /dev/null || true
+          curl -fsS -u "$AUTH" -T weekly.sql "$BASE/weekly.sql"
+          find img -type f | while read -r f; do
+            rel="${f#img/}"
+            curl -fsS -u "$AUTH" -X MKCOL "$BASE/img/$(dirname "$rel")/" > /dev/null || true
+            curl -fsS -u "$AUTH" -T "$f" "$BASE/img/$rel"
+          done
+          echo "备份完成：weekly/$DATE"
