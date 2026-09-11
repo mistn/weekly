@@ -12,8 +12,6 @@
 - 订阅：`/rss.xml` `/feed`
 - 渲染：标题、列表（含任务列表）、代码块、引用、图片、分割线、表格（极简细线风）
 
-定位：500 字内、当时不记就没了的放这里；超 500 字、要反复改、想被搜索的放主博客。标题加 `【念】` 前缀即可区分碎碎念。
-
 ## 本地预览
 
 ```bash
@@ -72,7 +70,7 @@ npx wrangler secret put ADMIN_PASSWORD
 
 4. 部署：
 ```bash
-pnpm deploy
+pnpm run deploy
 # 或 npx wrangler deploy
 ```
 
@@ -98,4 +96,4 @@ seed.sql       # 3篇示例
 
 ## 更新
 
-改样式直接编辑 `src/index.ts` 的 `css` 变量，`pnpm dev` 实时预览。阅读页保持 0 JS，`/admin` 的小 JS（上传/预览）只影响写作页。
+改样式直接编辑 `src/index.ts` 的 `css` 变量，`pnpm dev` 实时预览。
