@@ -33,7 +33,7 @@ ADMIN_PASSWORD=你的密码
 push 到 `main` 自动部署（`.github/workflows/deploy.yml`），`ADMIN_PASSWORD` 从 GitHub Secrets 同步。
 
 Secrets（仓库 Settings → Secrets and variables → Actions）：
-- `CLOUDFLARE_API_TOKEN`：用 “Edit Cloudflare Workers” 模板建
+- `CLOUDFLARE_API_TOKEN`：用 “Edit Cloudflare Workers” 模板建，再手动加一行帐户 / D1 / 读取
 - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare 后台链接里的 id
 - `ADMIN_PASSWORD`
 - `WEBDAV_URL`（末尾无斜杠）、`WEBDAV_USERNAME`、`WEBDAV_PASSWORD`
@@ -44,9 +44,8 @@ npx wrangler d1 create weekly
 # database_id 填进 wrangler.toml
 
 npx wrangler r2 bucket create weekly-img
-
-npx wrangler d1 execute weekly --remote --command "CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, content TEXT NOT NULL, date TEXT NOT NULL)"
 ```
+表不用建，代码里 `ensure()` 首次访问自动建。
 
 手动部署：
 ```bash
@@ -60,7 +59,7 @@ pnpm run deploy
 ## 备份
 
 - 本地：`pnpm run backup`，产物在 `backup/YYYY-MM-DD/`（不进 git）
-- 云端：`.github/workflows/backup.yml` 每天 02:00 自动备到 WebDAV，Actions 里也能手动 Run
+- 云端：`.github/workflows/backup.yml` 每周一 02:00 自动备到 WebDAV，无更新自动跳过，Actions 里也能手动 Run
 
 ## 目录
 

@@ -1,7 +1,7 @@
 # push 到 main 即自动部署到 Cloudflare，并把 GitHub 里的 ADMIN_PASSWORD 同步为 Worker secret
 # 以后改密码只改 GitHub Secrets，push 即生效，本地再也不用 wrangler secret put
 # 需要的 Secrets（仓库 Settings → Secrets and variables → Actions，跟备份共用前 5 个）：
-#   CLOUDFLARE_API_TOKEN   建议用 “Edit Cloudflare Workers” 模板建，一个 token 同时够部署和备份用
+#   CLOUDFLARE_API_TOKEN   用 “Edit Cloudflare Workers” 模板建，再手动 + 一行：帐户 / D1 / 读取
 #   CLOUDFLARE_ACCOUNT_ID  Cloudflare 后台链接里那串 account id
 #   ADMIN_PASSWORD         写文章的密码（注意用 printf 传，不带换行，echo 会多带个换行导致登录失败）
 #   WEBDAV_URL / WEBDAV_USERNAME / WEBDAV_PASSWORD  备份用（见 backup.yml）

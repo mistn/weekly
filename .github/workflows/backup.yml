@@ -1,6 +1,7 @@
-# 每天自动全量备份到 WebDAV（D1 + R2 图片），也可在 Actions 页面手动点一次
+# 每周自动全量备份到 WebDAV（D1 + R2 图片），也可在 Actions 页面手动点一次
+# 每周一 02:00（北京时间）跑；先比对 weekly.sql 指纹，无更新直接跳过
 # 需要配 5 个 Secrets（仓库 Settings → Secrets and variables → Actions）：
-#   CLOUDFLARE_API_TOKEN   Cloudflare 新建 Token：D1 读 + R2 对象读
+#   CLOUDFLARE_API_TOKEN   用 “Edit Cloudflare Workers” 模板建，再手动 + 一行：帐户 / D1 / 读取
 #   CLOUDFLARE_ACCOUNT_ID  Cloudflare 后台链接里那串 account id
 #   WEBDAV_URL             例 https://dav.jianguoyun.com/dav（末尾不要斜杠）
 #   WEBDAV_USERNAME        WebDAV 账号
@@ -10,7 +11,7 @@ name: backup
 
 on:
   schedule:
-    - cron: '0 18 * * *' # 每天 02:00（北京时间），全程云端跑
+    - cron: '0 18 * * 0' # 每周一 02:00（北京时间），全程云端跑
   workflow_dispatch: {} # Actions 页面 “Run workflow” 点一下即手动备份
 
 jobs:
@@ -20,19 +21,33 @@ jobs:
       - name: 安装 wrangler
         run: npm install -g wrangler@3
 
-      - name: 导出 D1 + 下载 R2 图片
+      - name: 导出 D1 + 检查有无更新
+        id: check
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WEBDAV_URL: ${{ secrets.WEBDAV_URL }}
+          WEBDAV_USERNAME: ${{ secrets.WEBDAV_USERNAME }}
+          WEBDAV_PASSWORD: ${{ secrets.WEBDAV_PASSWORD }}
         run: |
           wrangler d1 export weekly --remote --output weekly.sql
-          (grep -oE '/img/[0-9A-Za-z_./-]+' weekly.sql || true) | sort -u | while read -r p; do
-            key="${p#/img/}"
-            mkdir -p "img/$(dirname "$key")"
-            wrangler r2 object get "weekly-img/$key" --file "img/$key"
-          done
+          HASH=$(sha256sum weekly.sql | cut -d' ' -f1)
+          PREV=$(curl -fsS -u "$WEBDAV_USERNAME:$WEBDAV_PASSWORD" "${WEBDAV_URL%/}/weekly/.state" || true)
+          if [ -n "$PREV" ] && [ "$HASH" = "$PREV" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "内容无变化，跳过备份"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "hash=$HASH" >> $GITHUB_OUTPUT
+            (grep -oE '/img/[0-9A-Za-z_./-]+' weekly.sql || true) | sort -u | while read -r p; do
+              key="${p#/img/}"
+              mkdir -p "img/$(dirname "$key")"
+              wrangler r2 object get "weekly-img/$key" --file "img/$key"
+            done
+          fi
 
       - name: 上传到 WebDAV
+        if: steps.check.outputs.changed == 'true'
         env:
           WEBDAV_URL: ${{ secrets.WEBDAV_URL }}
           WEBDAV_USERNAME: ${{ secrets.WEBDAV_USERNAME }}
@@ -49,4 +64,6 @@ jobs:
             curl -fsS -u "$AUTH" -X MKCOL "$BASE/img/$(dirname "$rel")/" > /dev/null || true
             curl -fsS -u "$AUTH" -T "$f" "$BASE/img/$rel"
           done
+          printf '%s' "${{ steps.check.outputs.hash }}" > .state
+          curl -fsS -u "$AUTH" -T .state "${WEBDAV_URL%/}/weekly/.state"
           echo "备份完成：weekly/$DATE"
