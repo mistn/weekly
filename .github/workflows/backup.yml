@@ -1,5 +1,6 @@
 # 每周自动全量备份到 WebDAV（D1 + R2 图片），也可在 Actions 页面手动点一次
 # 每周一 02:00（北京时间）跑；先比对 weekly.sql 指纹，无更新直接跳过
+# 只保留最近 8 份（RETENTION_COUNT），超了自动删最老的日期目录
 # 需要配 5 个 Secrets（仓库 Settings → Secrets and variables → Actions）：
 #   CLOUDFLARE_API_TOKEN   用 “Edit Cloudflare Workers” 模板建，再手动 + 一行：帐户 / D1 / 读取
 #   CLOUDFLARE_ACCOUNT_ID  Cloudflare 后台链接里那串 account id
@@ -17,6 +18,8 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    env:
+      RETENTION_COUNT: 8 # 只保留最近 8 份备份，超了自动删最老的
     steps:
       - name: 安装 wrangler
         run: npm install -g wrangler@3
@@ -70,3 +73,16 @@ jobs:
           printf '%s' "${{ steps.check.outputs.hash }}" > .state
           curl -fsS -u "$AUTH" -T .state "${WEBDAV_URL%/}/weekly/.state"
           echo "备份完成：weekly/$DATE"
+          LIST=$(curl -fsS -u "$AUTH" -X PROPFIND -H "Depth: 1" "$ROOT/" || true)
+          DIRS=$(printf '%s' "$LIST" | grep -oE '<[^>]*href>[^<]+' | sed -E 's/<[^>]*href>//' | grep -E '/weekly/[0-9]{4}-[0-9]{2}-[0-9]{2}/?$' | sort -u || true)
+          COUNT=$(printf '%s' "$DIRS" | grep -c . || true)
+          if [ "$COUNT" -gt "$RETENTION_COUNT" ]; then
+            printf '%s' "$DIRS" | sort | head -n $((COUNT - RETENTION_COUNT)) | while read -r d; do
+              case "$d" in
+                http*) TARGET="$d" ;;
+                *) TARGET="${WEBDAV_URL%/}$d" ;;
+              esac
+              curl -fsS -u "$AUTH" -X DELETE "$TARGET" > /dev/null || true
+              echo "删除旧备份：$d"
+            done
+          fi

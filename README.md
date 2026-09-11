@@ -59,7 +59,7 @@ pnpm run deploy
 ## 备份
 
 - 本地：`pnpm run backup`，产物在 `backup/YYYY-MM-DD/`（不进 git）
-- 云端：`.github/workflows/backup.yml` 每周一 02:00 自动备到 WebDAV，无更新自动跳过，Actions 里也能手动 Run
+- 云端：`.github/workflows/backup.yml` 每周一 02:00 自动备到 WebDAV，无更新自动跳过，只留最近 8 份，Actions 里也能手动 Run
 
 ## 目录
 
