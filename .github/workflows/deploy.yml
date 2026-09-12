@@ -4,6 +4,7 @@
 #   CLOUDFLARE_API_TOKEN   用 “Edit Cloudflare Workers” 模板建，再手动 + 一行：帐户 / D1 / 读取
 #   CLOUDFLARE_ACCOUNT_ID  Cloudflare 后台链接里那串 account id
 #   ADMIN_PASSWORD         写文章的密码（注意用 printf 传，不带换行，echo 会多带个换行导致登录失败）
+#   TURNSTILE_SECRET       Turnstile 密钥（登录人机校验用，同样 printf 传）
 #   WEBDAV_URL / WEBDAV_USERNAME / WEBDAV_PASSWORD  备份用（见 backup.yml）
 
 name: deploy
@@ -46,3 +47,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: printf '%s' "$ADMIN_PASSWORD" | wrangler secret put ADMIN_PASSWORD
+
+      - name: 同步 Turnstile 密钥
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
+        run: printf '%s' "$TURNSTILE_SECRET" | wrangler secret put TURNSTILE_SECRET

@@ -37,6 +37,7 @@ Secrets（仓库 Settings → Secrets and variables → Actions）：
 - `CLOUDFLARE_API_TOKEN`：用 “Edit Cloudflare Workers” 模板建，再手动加一行帐户 / D1 / 读取
 - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare 后台链接里的 id
 - `ADMIN_PASSWORD`
+- `TURNSTILE_SECRET`：Turnstile 密钥（登录人机校验，本地 `.dev.vars` 不配则跳过校验）
 - `WEBDAV_URL`（末尾无斜杠）、`WEBDAV_USERNAME`、`WEBDAV_PASSWORD`
 
 首次建站：

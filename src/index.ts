@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 import { marked } from 'marked'
 
-type Env = { DB: D1Database; ADMIN_PASSWORD: string; IMG: R2Bucket }
+type Env = { DB: D1Database; ADMIN_PASSWORD: string; IMG: R2Bucket; TURNSTILE_SECRET: string }
 const app = new Hono<{ Bindings: Env }>()
+
+const TS_SITEKEY = '0x4AAAAAAExa50v0_uA6CYMF'
 
 app.use('*', async (c, next) => {
   await next()
@@ -23,12 +25,25 @@ const ensure = async (db: D1Database) => {
 const getCookie = (c: any, k: string) => (c.req.header('Cookie') || '').split('; ').find((x: string) => x.startsWith(k + '='))?.split('=')[1] || ''
 const isAuth = (c: any) => !c.env.ADMIN_PASSWORD || getCookie(c, 'auth') === c.env.ADMIN_PASSWORD || (c.req.header('Authorization') || '').replace('Bearer ','') === c.env.ADMIN_PASSWORD || c.req.header('X-Auth') === c.env.ADMIN_PASSWORD
 
+const verifyTurnstile = async (c: any, token: string) => {
+  if (!c.env.TURNSTILE_SECRET) return true
+  if (!token) return false
+  const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: `secret=${encodeURIComponent(c.env.TURNSTILE_SECRET)}&response=${encodeURIComponent(token)}`
+  })
+  const j = await r.json() as any
+  return j.success === true
+}
+
 app.get('/login', c => {
   if (isAuth(c)) return c.redirect('/admin')
-  return c.html(layout('登录', `<form method="post" action="/login" style="max-width:340px;margin:60px auto"><label style="gap:8px">密码<input name="password" type="password" required autofocus style="border:1px solid #111;border-radius:4px;padding:12px"></label></form>`))
+  return c.html(layout('登录', `<form method="post" action="/login" style="max-width:340px;margin:60px auto"><label style="gap:8px">密码<input name="password" type="password" required autofocus style="border:1px solid #111;border-radius:4px;padding:12px"></label><div class="cf-turnstile" data-sitekey="${TS_SITEKEY}"></div></form><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`))
 })
 app.post('/login', async c => {
   const f = await c.req.parseBody()
+  if (!await verifyTurnstile(c, String(f['cf-turnstile-response'] || ''))) return c.html(layout('登录', `<p style="color:#c00">人机校验失败</p><p><a href="/login">重试</a></p>`))
   if (String(f.password) !== c.env.ADMIN_PASSWORD) return c.html(layout('登录', `<p style="color:#c00">密码错误</p><p><a href="/login">重试</a></p>`))
   return new Response(null, { status: 302, headers: { 'Location': '/admin', 'Set-Cookie': `auth=${c.env.ADMIN_PASSWORD}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000` } })
 })
@@ -55,7 +70,7 @@ app.get('/d', async c => {
   const body = (await Promise.all(items.map(async r => {
     const html = await marked.parse(r.content)
     const ctl = admin ? `<p style="font-size:13px"><a href="/admin/edit/${r.id}">编辑</a></p>` : ``
-    return `<article><time>${esc(r.date)}</time><h2><a href="/w/${r.id}">${esc(r.title)}</a>${r.visible ? '' : '（私密）'}</h2><div class="md">${html}</div>${ctl}</article>`
+    return `<article><h2><a href="/w/${r.id}">${esc(r.title)}</a>${r.visible ? '' : '（私密）'}</h2><div class="md">${html}</div>${ctl}</article>`
   }))).join('') || `<p>还没有日记，<a href="/admin">写第一篇</a></p>`
   return c.html(layout('日记', body))
 })
@@ -69,7 +84,7 @@ app.get('/w/:id', async c => {
   if (!r.visible && !isAdmin) return c.notFound()
   const html = await marked.parse(r.content)
   const admin = isAdmin ? `<p style="margin-top:16px;font-size:13px"><a href="/admin/edit/${r.id}">编辑</a><span style="margin:0 8px;color:#ccc">·</span><form method="post" action="/admin/delete/${r.id}" style="display:inline" onsubmit="return confirm('删除?')"><button style="background:none;border:none;color:#999;text-decoration:underline;cursor:pointer;padding:0;font:inherit;font-size:13px">删除</button></form></p>` : ``
-  return c.html(layout(r.title, `<article><time>${esc(r.date)}</time><h2>${esc(r.title)}</h2>${r.visible ? '' : `<p style="font-size:12px;color:#999">仅自己可见</p>`}<div class="md">${html}</div>${admin}</article><p><a href="/">← 返回</a></p>`))
+  return c.html(layout(r.title, `<article>${r.title === r.date ? '' : `<time>${esc(r.date)}</time>`}<h2>${esc(r.title)}</h2>${r.visible ? '' : `<p style="font-size:12px;color:#999">仅自己可见</p>`}<div class="md">${html}</div>${admin}</article><p><a href="/">← 返回</a></p>`))
 })
 
 app.get('/admin', async c => {
@@ -316,12 +331,12 @@ app.get('/img/*', async c => {
 const rss = async (db: D1Database, url: string) => {
   await ensure(db)
   const { results } = await db.prepare(`SELECT * FROM entries WHERE visible=1 ORDER BY id DESC LIMIT 20`).all() as any
-  const items = (results as any[]).map(r => {
+  const items = (await Promise.all((results as any[]).map(async r => {
     const link = `${url}/w/${r.id}`
-    const desc = esc(r.content.slice(0, 200))
     const pub = new Date(r.date).toUTCString()
-    return `<item><title>${esc(r.title)}</title><link>${link}</link><guid>${link}</guid><pubDate>${pub}</pubDate><description><![CDATA[${r.content}]]></description></item>`
-  }).join('')
+    const body = String(await marked.parse(r.content)).replaceAll('src="/', `src="${url}/`).replaceAll('href="/', `href="${url}/`).replaceAll(']]>', ']]&gt;')
+    return `<item><title>${esc(r.title)}</title><link>${link}</link><guid>${link}</guid><pubDate>${pub}</pubDate><description><![CDATA[${body}]]></description></item>`
+  }))).join('')
   return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>周记</title><link>${url}</link><description>weekly</description>${items}</channel></rss>`
 }
 
@@ -339,6 +354,7 @@ app.use('/api/*', async (c, next) => {
 })
 app.post('/api/login', async c => {
   const b: any = await c.req.json().catch(async () => await c.req.parseBody())
+  if (!await verifyTurnstile(c, String(b['cf-turnstile-response'] || ''))) return c.json({ ok: false, error: 'turnstile' }, 403)
   const p = b.password || b.auth
   if (p !== c.env.ADMIN_PASSWORD) return c.json({ ok: false }, 401)
   return c.json({ ok: true })
