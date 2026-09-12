@@ -4,7 +4,7 @@ import { marked } from 'marked'
 type Env = { DB: D1Database; ADMIN_PASSWORD: string; IMG: R2Bucket; TURNSTILE_SECRET: string }
 const app = new Hono<{ Bindings: Env }>()
 
-const TS_SITEKEY = '0x4AAAAAAExa50v0_uA6CYMF'
+const TS_SITEKEY = '0x4AAAAAAExa5Ov0_uA6CYMF'
 
 app.use('*', async (c, next) => {
   await next()
@@ -70,7 +70,7 @@ app.get('/d', async c => {
   const body = (await Promise.all(items.map(async r => {
     const html = await marked.parse(r.content)
     const ctl = admin ? `<p style="font-size:13px"><a href="/admin/edit/${r.id}">编辑</a></p>` : ``
-    return `<article><h2><a href="/w/${r.id}">${esc(r.title)}</a>${r.visible ? '' : '（私密）'}</h2><div class="md">${html}</div>${ctl}</article>`
+    return `<article><h2>${esc(r.title)}${r.visible ? '' : '（私密）'}</h2><div class="md">${html}</div>${ctl}</article>`
   }))).join('') || `<p>还没有日记，<a href="/admin">写第一篇</a></p>`
   return c.html(layout('日记', body))
 })
@@ -290,7 +290,7 @@ app.post('/admin/edit/:id', async c => {
   const kind = String(f.kind || '') === 'diary' ? 'diary' : 'weekly'
   const visible = f.visible ? 1 : 0
   await c.env.DB.prepare(`UPDATE entries SET title=?,content=?,date=?,kind=?,visible=? WHERE id=?`).bind(String(f.title), String(f.content), String(f.date), kind, visible, c.req.param('id')).run()
-  return c.redirect(`/w/${c.req.param('id')}`)
+  return c.redirect(kind === 'diary' ? '/d' : `/w/${c.req.param('id')}`)
 })
 
 app.post('/admin/delete/:id', async c => {
