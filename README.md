@@ -2,8 +2,9 @@
 
 `Hono + D1 + R2 + marked` 服务端渲染 Markdown，部署在 **Cloudflare Workers**。
 
-- 阅读：`/` 首页 `/w/:id` 详情，纯 HTML+CSS，无前端 JS
-- 写作：`/admin` 写 Markdown，存 `D1`，支持编辑/删除
+- 阅读：`/` 首页（周记）`/d` 日记流 `/w/:id` 详情，纯 HTML+CSS，无前端 JS
+- 写作：`/admin` 写 Markdown，存 `D1`，支持编辑/删除，分类周记/日记
+- 可见：公开勾掉即私密，列表/详情/RSS 全部不可见，登录后自己可见
 - 图片：`/admin` 选图上传到 `R2`，自动插到光标处，可选压成 webp（长边 1600）
 - 预览：`/admin` 写/预览切换
 - 鉴权：`/admin*` 需登录（`ADMIN_PASSWORD`），其余公开
@@ -54,7 +55,7 @@ pnpm run deploy
 
 ## 写作
 
-`/login` 登录 → `/admin` 填标题/日期/正文 → 保存。传图后进预览确认一眼再保存。
+`/login` 登录 → `/admin` 选分类填标题/日期/正文 → 保存。日记标题默认当天日期。传图后进预览确认一眼再保存。
 
 ## 备份
 
