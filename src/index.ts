@@ -62,7 +62,9 @@ app.get('/', async c => {
   const body = (await Promise.all(items.map(async r => {
     const html = await marked.parse(r.content)
     const ctl = admin ? `<p style="font-size:13px"><a href="/admin/edit/${r.id}">编辑</a> · <a href="/w/${r.id}">详情</a></p>` : ``
-    return `<article><time>${esc(r.date)}</time><h2>${esc(r.title)}${r.visible ? '' : '（私密）'}</h2><div class="md">${html}</div>${ctl}</article>`
+    const showTitle = r.title && r.title !== r.date
+    const head = showTitle ? `<h2>${esc(r.title)}${r.visible ? '' : '（私密）'}</h2>` : (r.visible ? '' : `<p style="font-size:12px;color:#999">私密</p>`)
+    return `<article><time>${esc(r.date)}</time>${head}<div class="md">${html}</div>${ctl}</article>`
   }))).join('') || `<p>还没有日记，<a href="/admin">写第一篇</a></p>`
   return c.html(layout('日记', body))
 })
@@ -78,11 +80,12 @@ app.get('/w/:id', async c => {
   if (!r.visible && !isAdmin) return c.notFound()
   const html = await marked.parse(r.content)
   const admin = isAdmin ? `<p style="margin-top:16px;font-size:13px"><a href="/admin/edit/${r.id}">编辑</a><span style="margin:0 8px;color:#ccc">·</span><form method="post" action="/admin/delete/${r.id}" style="display:inline" onsubmit="return confirm('删除?')"><button style="background:none;border:none;color:#999;text-decoration:underline;cursor:pointer;padding:0;font:inherit;font-size:13px">删除</button></form></p>` : ``
-  return c.html(layout(r.title, `<article>${r.title === r.date ? '' : `<time>${esc(r.date)}</time>`}<h2>${esc(r.title)}</h2>${r.visible ? '' : `<p style="font-size:12px;color:#999">仅自己可见</p>`}<div class="md">${html}</div>${admin}</article><p><a href="/">← 返回</a></p>`))
+  const showTitle = r.title && r.title !== r.date
+  return c.html(layout(r.title || r.date || '日记', `<article><time>${esc(r.date)}</time>${showTitle ? `<h2>${esc(r.title)}</h2>` : ''}${r.visible ? '' : `<p style="font-size:12px;color:#999">仅自己可见</p>`}<div class="md">${html}</div>${admin}</article><p><a href="/">← 返回</a></p>`))
 })
 
 app.get('/admin', async c => {
-  return c.html(layout('写日记', `<form method="post" action="/admin"><input type="hidden" name="kind" value="diary"><label>标题<input name="title" placeholder="${new Date().toISOString().slice(0,10)}"></label><label>日期<input name="date" type="date" value="${new Date().toISOString().slice(0,10)}"></label><div style="display:flex;gap:16px;font-size:13px"><label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" name="visible" checked> 公开</label></div><div style="font-size:13px;color:#666"><div>图片 <input type="file" id="imgfile" accept="image/*"></div><label style="flex-direction:row;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" id="towebp" checked> 压缩成 webp（长边1600）</label><span id="imgmsg" style="font-size:12px;color:#999;margin-left:8px"></span></div><label>正文 (Markdown)</label><div style="display:flex;gap:16px;align-items:center;font-size:13px;margin:-8px 0 0"><button type="button" id="tab-write" style="background:none;border:none;padding:0;text-decoration:underline;text-underline-offset:3px;font-weight:bold;align-self:auto">写</button><button type="button" id="tab-prev" style="background:none;border:none;padding:0;color:#999;align-self:auto">预览</button><span id="prevmsg" style="font-size:12px;color:#999"></span></div><textarea id="content" name="content" required placeholder="# 今天&#10;&#10;- 做了什么..."></textarea><div id="preview" class="md" style="display:none;border:1px solid #eee;border-radius:4px;padding:14px;min-height:200px"></div><button>保存</button><p style="font-size:12px;color:#999;margin-top:8px"><a href="/logout">退出登录</a></p></form><script>
+  return c.html(layout('写日记', `<form method="post" action="/admin"><input type="hidden" name="kind" value="diary"><label>标题（可空）<input name="title" placeholder="不填只显示日期"></label><label>日期<input name="date" type="date" value="${new Date().toISOString().slice(0,10)}"></label><div style="display:flex;gap:16px;font-size:13px"><label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" name="visible" checked> 公开</label></div><div style="font-size:13px;color:#666"><div>图片 <input type="file" id="imgfile" accept="image/*"></div><label style="flex-direction:row;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" id="towebp" checked> 压缩成 webp（长边1600）</label><span id="imgmsg" style="font-size:12px;color:#999;margin-left:8px"></span></div><label>正文 (Markdown)</label><div style="display:flex;gap:16px;align-items:center;font-size:13px;margin:-8px 0 0"><button type="button" id="tab-write" style="background:none;border:none;padding:0;text-decoration:underline;text-underline-offset:3px;font-weight:bold;align-self:auto">写</button><button type="button" id="tab-prev" style="background:none;border:none;padding:0;color:#999;align-self:auto">预览</button><span id="prevmsg" style="font-size:12px;color:#999"></span></div><textarea id="content" name="content" required placeholder="# 今天&#10;&#10;- 做了什么..."></textarea><div id="preview" class="md" style="display:none;border:1px solid #eee;border-radius:4px;padding:14px;min-height:200px"></div><button>保存</button><p style="font-size:12px;color:#999;margin-top:8px"><a href="/logout">退出登录</a></p></form><script>
 const ta = document.getElementById('content');
 const fi = document.getElementById('imgfile');
 const msg = document.getElementById('imgmsg');
@@ -173,10 +176,9 @@ app.post('/admin', async c => {
   const kind = 'diary'
   const visible = f.visible ? 1 : 0
   const date = String(f.date || new Date().toISOString().slice(0,10))
-  let title = String(f.title || '').trim()
+  const title = String(f.title || '').trim()
   const content = String(f.content || '').trim()
-  if (!title) title = date
-  if (!title || !content) return c.text('title/content required', 400)
+  if (!content) return c.text('content required', 400)
   await c.env.DB.prepare(`INSERT INTO entries (title,content,date,kind,visible) VALUES (?,?,?,?,?)`).bind(title, content, date, kind, visible).run()
   return c.redirect('/')
 })
@@ -193,7 +195,7 @@ app.get('/admin/edit/:id', async c => {
   await ensure(c.env.DB)
   const r = await c.env.DB.prepare(`SELECT * FROM entries WHERE id=?`).bind(c.req.param('id')).first() as any
   if (!r) return c.notFound()
-  return c.html(layout('编辑', `<form method="post" action="/admin/edit/${r.id}"><input type="hidden" name="kind" value="diary"><label>标题<input name="title" value="${esc(r.title)}" required></label><label>日期<input name="date" type="date" value="${esc(r.date)}"></label><div style="display:flex;gap:16px;font-size:13px"><label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" name="visible"${r.visible === 0 ? '' : ' checked'}> 公开</label></div><div style="font-size:13px;color:#666"><div>图片 <input type="file" id="imgfile" accept="image/*"></div><label style="flex-direction:row;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" id="towebp" checked> 压缩成 webp（长边1600）</label><span id="imgmsg" style="font-size:12px;color:#999;margin-left:8px"></span></div><label>正文 (Markdown)</label><div style="display:flex;gap:16px;align-items:center;font-size:13px;margin:-8px 0 0"><button type="button" id="tab-write" style="background:none;border:none;padding:0;text-decoration:underline;text-underline-offset:3px;font-weight:bold;align-self:auto">写</button><button type="button" id="tab-prev" style="background:none;border:none;padding:0;color:#999;align-self:auto">预览</button><span id="prevmsg" style="font-size:12px;color:#999"></span></div><textarea id="content" name="content" required>${esc(r.content)}</textarea><div id="preview" class="md" style="display:none;border:1px solid #eee;border-radius:4px;padding:14px;min-height:200px"></div><button>更新</button></form><script>
+  return c.html(layout('编辑', `<form method="post" action="/admin/edit/${r.id}"><input type="hidden" name="kind" value="diary"><label>标题（可空）<input name="title" value="${esc(r.title || '')}"></label><label>日期<input name="date" type="date" value="${esc(r.date)}"></label><div style="display:flex;gap:16px;font-size:13px"><label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" name="visible"${r.visible === 0 ? '' : ' checked'}> 公开</label></div><div style="font-size:13px;color:#666"><div>图片 <input type="file" id="imgfile" accept="image/*"></div><label style="flex-direction:row;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" id="towebp" checked> 压缩成 webp（长边1600）</label><span id="imgmsg" style="font-size:12px;color:#999;margin-left:8px"></span></div><label>正文 (Markdown)</label><div style="display:flex;gap:16px;align-items:center;font-size:13px;margin:-8px 0 0"><button type="button" id="tab-write" style="background:none;border:none;padding:0;text-decoration:underline;text-underline-offset:3px;font-weight:bold;align-self:auto">写</button><button type="button" id="tab-prev" style="background:none;border:none;padding:0;color:#999;align-self:auto">预览</button><span id="prevmsg" style="font-size:12px;color:#999"></span></div><textarea id="content" name="content" required>${esc(r.content)}</textarea><div id="preview" class="md" style="display:none;border:1px solid #eee;border-radius:4px;padding:14px;min-height:200px"></div><button>更新</button></form><script>
 const ta = document.getElementById('content');
 const fi = document.getElementById('imgfile');
 const msg = document.getElementById('imgmsg');
@@ -283,7 +285,7 @@ app.post('/admin/edit/:id', async c => {
   const f = await c.req.parseBody()
   const kind = 'diary'
   const visible = f.visible ? 1 : 0
-  await c.env.DB.prepare(`UPDATE entries SET title=?,content=?,date=?,kind=?,visible=? WHERE id=?`).bind(String(f.title), String(f.content), String(f.date), kind, visible, c.req.param('id')).run()
+  await c.env.DB.prepare(`UPDATE entries SET title=?,content=?,date=?,kind=?,visible=? WHERE id=?`).bind(String(f.title || '').trim(), String(f.content), String(f.date), kind, visible, c.req.param('id')).run()
   return c.redirect('/')
 })
 
@@ -329,7 +331,7 @@ const rss = async (db: D1Database, url: string) => {
     const link = `${url}/w/${r.id}`
     const pub = new Date(r.date).toUTCString()
     const body = String(await marked.parse(r.content)).replaceAll('src="/', `src="${url}/`).replaceAll('href="/', `href="${url}/`).replaceAll(']]>', ']]&gt;')
-    return `<item><title>${esc(r.title)}</title><link>${link}</link><guid>${link}</guid><pubDate>${pub}</pubDate><description><![CDATA[${body}]]></description></item>`
+    return `<item><title>${esc(r.title || r.date)}</title><link>${link}</link><guid>${link}</guid><pubDate>${pub}</pubDate><description><![CDATA[${body}]]></description></item>`
   }))).join('')
   return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>日记</title><link>${url}</link><description>diary</description>${items}</channel></rss>`
 }
@@ -372,7 +374,7 @@ app.post('/api/entries', async c => {
   const b: any = await c.req.json()
   const kind = 'diary'
   const visible = b.visible ? 1 : 0
-  await c.env.DB.prepare(`INSERT INTO entries (title,content,date,kind,visible) VALUES (?,?,?,?,?)`).bind(b.title, b.content, b.date || new Date().toISOString().slice(0,10), kind, visible).run()
+  await c.env.DB.prepare(`INSERT INTO entries (title,content,date,kind,visible) VALUES (?,?,?,?,?)`).bind(String(b.title || '').trim(), b.content, b.date || new Date().toISOString().slice(0,10), kind, visible).run()
   return c.json({ ok: true })
 })
 app.put('/api/entries/:id', async c => {
@@ -381,7 +383,7 @@ app.put('/api/entries/:id', async c => {
   const b: any = await c.req.json()
   const kind = 'diary'
   const visible = b.visible ? 1 : 0
-  await c.env.DB.prepare(`UPDATE entries SET title=?,content=?,date=?,kind=?,visible=? WHERE id=?`).bind(b.title, b.content, b.date, kind, visible, c.req.param('id')).run()
+  await c.env.DB.prepare(`UPDATE entries SET title=?,content=?,date=?,kind=?,visible=? WHERE id=?`).bind(String(b.title || '').trim(), b.content, b.date, kind, visible, c.req.param('id')).run()
   return c.json({ ok: true })
 })
 app.delete('/api/entries/:id', async c => {
